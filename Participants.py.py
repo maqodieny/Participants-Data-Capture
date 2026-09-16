@@ -46,7 +46,7 @@ def load_data():
     )
         # Drop the start and end columns
     loaded_df = loaded_df.drop(
-        columns=["start", "end"],
+        columns=["start", "end","_id","_uuid","meta/rootUuid"],
         errors="ignore"
     )
     return loaded_df
