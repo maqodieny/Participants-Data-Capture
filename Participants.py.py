@@ -44,7 +44,11 @@ def load_data():
         io.StringIO(response.text),
         sep=";"
     )
-
+        # Drop the start and end columns
+    loaded_df = loaded_df.drop(
+        columns=["start", "end"],
+        errors="ignore"
+    )
     return loaded_df
 
 
