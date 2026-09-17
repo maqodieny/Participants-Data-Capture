@@ -4,7 +4,22 @@ import pandas as pd
 import requests
 import io
 import base64
+import html
 import streamlit as st
+
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.pagesizes import landscape, A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import mm
+from reportlab.platypus import (
+    SimpleDocTemplate,
+    Table,
+    TableStyle,
+    Paragraph,
+    Spacer,
+    Image
+)
 
 
 # --- Page configuration ---
@@ -65,8 +80,263 @@ def download_signature_as_data_url(signature_url):
         return None
 
 
+def create_pdf(filtered_data):
+    """
+    Create a PDF containing filtered records and
+    the corresponding signature images.
+    """
+
+    pdf_buffer = io.BytesIO()
+
+    document = SimpleDocTemplate(
+        pdf_buffer,
+        pagesize=landscape(A4),
+        rightMargin=8 * mm,
+        leftMargin=8 * mm,
+        topMargin=8 * mm,
+        bottomMargin=8 * mm
+    )
+
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle(
+        "PDFTitle",
+        parent=styles["Title"],
+        alignment=TA_CENTER,
+        fontSize=14,
+        leading=18,
+        spaceAfter=8
+    )
+
+    cell_style = ParagraphStyle(
+        "PDFCell",
+        parent=styles["BodyText"],
+        fontSize=6,
+        leading=7,
+        wordWrap="CJK"
+    )
+
+    header_style = ParagraphStyle(
+        "PDFHeader",
+        parent=styles["BodyText"],
+        fontSize=6,
+        leading=7,
+        textColor=colors.white,
+        alignment=TA_CENTER
+    )
+
+    pdf_elements = []
+
+    pdf_elements.append(
+        Paragraph(
+            "Participants' Data",
+            title_style
+        )
+    )
+
+    pdf_elements.append(
+        Paragraph(
+            f"Number of records: {len(filtered_data)}",
+            cell_style
+        )
+    )
+
+    pdf_elements.append(
+        Spacer(1, 5 * mm)
+    )
+
+    # Arrange all columns, with the signature column last
+    pdf_columns = [
+        column
+        for column in filtered_data.columns
+        if column != SIGNATURE_URL_COLUMN
+    ]
+
+    pdf_columns.append(SIGNATURE_URL_COLUMN)
+
+    table_header = [
+        Paragraph(
+            html.escape(str(column)),
+            header_style
+        )
+        for column in pdf_columns
+    ]
+
+    table_data = [table_header]
+
+    for _, row in filtered_data.iterrows():
+
+        row_values = []
+
+        for column in pdf_columns:
+
+            # Add signature image
+            if column == SIGNATURE_URL_COLUMN:
+
+                signature_data_url = row.get(
+                    SIGNATURE_URL_COLUMN
+                )
+
+                if (
+                    pd.notna(signature_data_url)
+                    and str(signature_data_url).startswith(
+                        "data:image"
+                    )
+                ):
+                    try:
+                        encoded_part = str(
+                            signature_data_url
+                        ).split(",", 1)[1]
+
+                        image_bytes = base64.b64decode(
+                            encoded_part
+                        )
+
+                        image_file = io.BytesIO(
+                            image_bytes
+                        )
+
+                        signature_image = Image(
+                            image_file,
+                            width=25 * mm,
+                            height=12 * mm
+                        )
+
+                        row_values.append(
+                            signature_image
+                        )
+
+                    except Exception:
+                        row_values.append(
+                            Paragraph(
+                                "Unavailable",
+                                cell_style
+                            )
+                        )
+
+                else:
+                    row_values.append(
+                        Paragraph(
+                            "No signature",
+                            cell_style
+                        )
+                    )
+
+            # Add ordinary text cell
+            else:
+                value = row.get(column, "")
+
+                if pd.isna(value):
+                    value = ""
+
+                row_values.append(
+                    Paragraph(
+                        html.escape(str(value)),
+                        cell_style
+                    )
+                )
+
+        table_data.append(row_values)
+
+    # Calculate widths for the landscape A4 page
+    available_width = (
+        landscape(A4)[0] - 16 * mm
+    )
+
+    column_count = len(pdf_columns)
+
+    column_widths = [
+        available_width / column_count
+        for _ in range(column_count)
+    ]
+
+    table = Table(
+        table_data,
+        colWidths=column_widths,
+        repeatRows=1
+    )
+
+    table.setStyle(
+        TableStyle(
+            [
+                (
+                    "BACKGROUND",
+                    (0, 0),
+                    (-1, 0),
+                    colors.HexColor("#1F4E78")
+                ),
+                (
+                    "TEXTCOLOR",
+                    (0, 0),
+                    (-1, 0),
+                    colors.white
+                ),
+                (
+                    "GRID",
+                    (0, 0),
+                    (-1, -1),
+                    0.25,
+                    colors.grey
+                ),
+                (
+                    "VALIGN",
+                    (0, 0),
+                    (-1, -1),
+                    "MIDDLE"
+                ),
+                (
+                    "ALIGN",
+                    (0, 0),
+                    (-1, 0),
+                    "CENTER"
+                ),
+                (
+                    "ROWBACKGROUNDS",
+                    (0, 1),
+                    (-1, -1),
+                    [
+                        colors.white,
+                        colors.HexColor("#F2F6FA")
+                    ]
+                ),
+                (
+                    "LEFTPADDING",
+                    (0, 0),
+                    (-1, -1),
+                    3
+                ),
+                (
+                    "RIGHTPADDING",
+                    (0, 0),
+                    (-1, -1),
+                    3
+                ),
+                (
+                    "TOPPADDING",
+                    (0, 0),
+                    (-1, -1),
+                    3
+                ),
+                (
+                    "BOTTOMPADDING",
+                    (0, 0),
+                    (-1, -1),
+                    3
+                )
+            ]
+        )
+    )
+
+    pdf_elements.append(table)
+
+    document.build(pdf_elements)
+
+    return pdf_buffer.getvalue()
+
+
 @st.cache_data
 def load_data():
+
     response = requests.get(
         CSV_URL,
         headers={
@@ -96,7 +366,9 @@ def load_data():
     return loaded_df
 
 
+# --- Load data safely ---
 try:
+
     df = load_data()
 
     st.success(
@@ -104,19 +376,23 @@ try:
     )
 
 except requests.exceptions.RequestException as error:
+
     st.error(
         f"Unable to load data from KoboToolbox: {error}"
     )
+
     st.stop()
 
 except Exception as error:
+
     st.error(
         f"An error occurred while processing the data: {error}"
     )
+
     st.stop()
 
 
-# --- Configure your specific columns here ---
+# --- Configure your columns ---
 NAME_COLUMN = "Name"
 DATE_COLUMN = "Activity Date"
 SIGNATURE_URL_COLUMN = "Signature_URL"
@@ -134,15 +410,19 @@ missing_columns = [
 ]
 
 if missing_columns:
+
     st.error(
-        "The following required columns were not found in the dataset: "
+        "The following required columns were not found in "
+        "the dataset: "
         + ", ".join(missing_columns)
     )
+
     st.stop()
 
 
-# --- Convert protected Signature URLs into displayable images ---
+# --- Convert protected signature URLs into images ---
 with st.spinner("Loading signature images..."):
+
     df[SIGNATURE_URL_COLUMN] = df[
         SIGNATURE_URL_COLUMN
     ].apply(
@@ -150,14 +430,14 @@ with st.spinner("Loading signature images..."):
     )
 
 
-# --- Pre-process the date column to extract months ---
+# --- Extract month and year ---
 df["_month"] = pd.to_datetime(
     df[DATE_COLUMN],
     errors="coerce"
 ).dt.strftime("%B %Y")
 
 
-# --- Build sorted month options ---
+# --- Build month options ---
 month_options = ["All"] + sorted(
     df["_month"]
     .dropna()
@@ -170,7 +450,7 @@ month_options = ["All"] + sorted(
 )
 
 
-# --- Build sorted name options ---
+# --- Build name options ---
 name_options = ["All"] + sorted(
     df[NAME_COLUMN]
     .dropna()
@@ -193,6 +473,7 @@ filter_column_1, filter_column_2, filter_column_3 = st.columns(3)
 
 
 with filter_column_1:
+
     name_contains = st.text_input(
         "Name contains:",
         value=""
@@ -200,6 +481,7 @@ with filter_column_1:
 
 
 with filter_column_2:
+
     name_pick = st.selectbox(
         "Or pick name:",
         options=name_options
@@ -207,18 +489,20 @@ with filter_column_2:
 
 
 with filter_column_3:
+
     month = st.selectbox(
         "Month:",
         options=month_options
     )
 
 
-# --- Filter data ---
+# --- Copy the complete dataset ---
 filtered = df.copy()
 
 
-# --- Filter by Name ---
+# --- Filter by name text ---
 if name_contains:
+
     filtered = filtered[
         filtered[NAME_COLUMN]
         .astype(str)
@@ -229,7 +513,10 @@ if name_contains:
         )
     ]
 
+
+# --- Otherwise filter by selected name ---
 elif name_pick != "All":
+
     filtered = filtered[
         filtered[NAME_COLUMN]
         .astype(str)
@@ -237,27 +524,28 @@ elif name_pick != "All":
     ]
 
 
-# --- Filter by Month ---
+# --- Filter by month ---
 if month != "All":
+
     filtered = filtered[
         filtered["_month"] == month
     ]
 
 
-# --- Drop helper column before display/export ---
+# --- Remove helper column ---
 display_df = filtered.drop(
     columns=["_month"],
     errors="ignore"
 )
 
 
-# --- Display record count ---
+# --- Display count ---
 st.write(
     f"### Showing {len(display_df)} matching records"
 )
 
 
-# --- Configure Signature URL as an image column ---
+# --- Configure image column ---
 column_config = {
     SIGNATURE_URL_COLUMN: st.column_config.ImageColumn(
         "Signature",
@@ -276,13 +564,14 @@ st.dataframe(
 )
 
 
-# --- Save filtered data to Excel ---
+# --- Create Excel file ---
 excel_buffer = io.BytesIO()
 
 with pd.ExcelWriter(
     excel_buffer,
     engine="openpyxl"
 ) as writer:
+
     display_df.to_excel(
         writer,
         index=False,
@@ -292,7 +581,7 @@ with pd.ExcelWriter(
 excel_data = excel_buffer.getvalue()
 
 
-# --- Download button ---
+# --- Download Excel ---
 st.download_button(
     label="Download Excel",
     data=excel_data,
@@ -301,4 +590,21 @@ st.download_button(
         "application/vnd.openxmlformats-officedocument."
         "spreadsheetml.sheet"
     )
+)
+
+
+# --- Create PDF file ---
+with st.spinner("Preparing PDF with signatures..."):
+
+    pdf_data = create_pdf(
+        display_df
+    )
+
+
+# --- Download PDF ---
+st.download_button(
+    label="Download PDF with Signatures",
+    data=pdf_data,
+    file_name="Participants_Data_with_Signatures.pdf",
+    mime="application/pdf"
 )
