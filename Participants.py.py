@@ -119,7 +119,7 @@ except Exception as error:
 # --- Configure your specific columns here ---
 NAME_COLUMN = "Name"
 DATE_COLUMN = "Activity Date"
-SIGNATURE_URL_COLUMN = "Signature URL"
+SIGNATURE_URL_COLUMN = "Signature_URL"
 
 
 # --- Validate required columns ---
