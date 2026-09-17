@@ -25,7 +25,7 @@ from reportlab.platypus import (
 # --- Page configuration ---
 st.set_page_config(
     page_title="Participants' Data",
-    page_icon="",
+    page_icon="psk logo.png",
     layout="wide"
 )
 
