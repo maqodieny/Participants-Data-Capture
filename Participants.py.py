@@ -358,6 +358,7 @@ def load_data():
             "end",
             "_id",
             "_uuid",
+            "Signature",
             "meta/rootUuid"
         ],
         errors="ignore"
