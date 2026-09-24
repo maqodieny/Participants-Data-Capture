@@ -1,3 +1,36 @@
+# -*- coding: utf-8 -*-
+
+import base64
+import html
+import io
+from datetime import datetime
+
+import pandas as pd
+import requests
+import streamlit as st
+
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import mm
+from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+
+st.set_page_config(
+    page_title="Participants' Data",
+    page_icon="📊",
+    layout="wide"
+)
+
+
+# Prefer .streamlit/secrets.toml in deployment:
+# KOBOTOOLBOX_API_TOKEN = "your-token"
+API_TOKEN = st.secrets.get(
+    "KOBOTOOLBOX_API_TOKEN",
+    "d87b11826e9b2b08b3fcdc72e63c6830d29579da"
+)
+
 CSV_URL = (
     "https://eu.kobotoolbox.org/api/v2/assets/"
     "aEFQaUj3cV7jjRzKoet8ax/export-settings/"
