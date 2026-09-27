@@ -73,7 +73,7 @@ def load_data():
     response.raise_for_status()
     loaded_df = pd.read_csv(io.StringIO(response.text), sep=";")
     return loaded_df.drop(
-        columns=["start", "end", "_id", "_uuid", "meta/rootUuid"],
+        columns=["start", "end", "_id", "_uuid", "meta/rootUuid","Signature"],
         errors="ignore"
     )
 
