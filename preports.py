@@ -207,7 +207,7 @@ def create_approval_section():
             available_width * 0.31,
             available_width * 0.20
         ],
-        rowHeights=[10 * mm, 24 * mm, 24 * mm, 24 * mm, 24 * mm],
+        rowHeights=[7 * mm, 7 * mm, 7 * mm, 7 * mm, 7 * mm],
         repeatRows=1
     )
     table.setStyle(TableStyle([
