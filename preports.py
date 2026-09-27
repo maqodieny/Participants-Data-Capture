@@ -17,15 +17,8 @@ from reportlab.lib.units import mm
 from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 
-st.set_page_config(
-    page_title="Participants' Data",
-    page_icon="📊",
-    layout="wide"
-)
+st.set_page_config(page_title="Participants' Data", page_icon="📊", layout="wide")
 
-
-# Prefer .streamlit/secrets.toml in deployment:
-# KOBOTOOLBOX_API_TOKEN = "your-token"
 API_TOKEN = st.secrets.get(
     "KOBOTOOLBOX_API_TOKEN",
     "d87b11826e9b2b08b3fcdc72e63c6830d29579da"
@@ -41,7 +34,6 @@ NAME_COLUMN = "Name"
 DATE_COLUMN = "Activity Date"
 SIGNATURE_URL_COLUMN = "Signature_URL"
 
-# Edit these values when you want the second column pre-filled.
 DOCUSIGN_FIELDS = [
     ("Company and project logo", ""),
     ("Activity name", ""),
@@ -51,14 +43,11 @@ DOCUSIGN_FIELDS = [
 
 
 def download_signature_as_data_url(signature_url):
-    """Download a protected KoboToolbox image as a Base64 data URL."""
     if pd.isna(signature_url):
         return None
-
     signature_url = str(signature_url).strip()
     if not signature_url:
         return None
-
     try:
         response = requests.get(
             signature_url,
@@ -66,17 +55,14 @@ def download_signature_as_data_url(signature_url):
             timeout=30
         )
         response.raise_for_status()
-
         content_type = response.headers.get("Content-Type", "image/jpeg")
         encoded_image = base64.b64encode(response.content).decode("utf-8")
         return f"data:{content_type};base64,{encoded_image}"
-
     except requests.exceptions.RequestException:
         return None
 
 
 @st.cache_data
-
 def load_data():
     response = requests.get(
         CSV_URL,
@@ -84,21 +70,17 @@ def load_data():
         timeout=60
     )
     response.raise_for_status()
-
     loaded_df = pd.read_csv(io.StringIO(response.text), sep=";")
-
     return loaded_df.drop(
-        columns=["start", "end", "_id", "_uuid", "meta/rootUuid","Signature"],
+        columns=["start", "end", "_id", "_uuid", "meta/rootUuid"],
         errors="ignore"
     )
 
 
 def add_header_footer(canvas, document):
-    """Draw the custom header, DocuSign table, and footer on every page."""
     canvas.saveState()
     page_width, page_height = landscape(A4)
 
-    # Header band
     canvas.setFillColor(colors.HexColor("#1F4E78"))
     canvas.rect(0, page_height - 22 * mm, page_width, 22 * mm, fill=1, stroke=0)
 
@@ -120,23 +102,16 @@ def add_header_footer(canvas, document):
         f"Generated: {generated_date}"
     )
 
-    # DocuSign guidance/input table
     label_style = ParagraphStyle(
-        "DocuSignLabel",
-        fontName="Helvetica-Bold",
-        fontSize=6,
-        leading=7,
-        textColor=colors.HexColor("#1F1F1F")
+        "DocuSignLabel", fontName="Helvetica-Bold", fontSize=6,
+        leading=7, textColor=colors.HexColor("#1F1F1F")
     )
     value_style = ParagraphStyle(
-        "DocuSignValue",
-        fontName="Helvetica",
-        fontSize=6,
-        leading=7,
-        textColor=colors.HexColor("#1F1F1F")
+        "DocuSignValue", fontName="Helvetica", fontSize=6,
+        leading=7, textColor=colors.HexColor("#1F1F1F")
     )
 
-    docusign_table_data = [
+    docusign_data = [
         [
             Paragraph(html.escape(str(label)), label_style),
             Paragraph(html.escape(str(value)), value_style)
@@ -145,7 +120,7 @@ def add_header_footer(canvas, document):
     ]
 
     docusign_table = Table(
-        docusign_table_data,
+        docusign_data,
         colWidths=[34 * mm, 48 * mm],
         rowHeights=[7 * mm] * len(DOCUSIGN_FIELDS)
     )
@@ -169,7 +144,6 @@ def add_header_footer(canvas, document):
         page_height - table_height - 25 * mm
     )
 
-    # Footer
     canvas.setStrokeColor(colors.HexColor("#1F4E78"))
     canvas.setLineWidth(0.5)
     canvas.line(10 * mm, 14 * mm, page_width - 10 * mm, 14 * mm)
@@ -185,10 +159,73 @@ def add_header_footer(canvas, document):
     canvas.restoreState()
 
 
-def create_pdf(filtered_data):
-    """Create a landscape PDF with records and embedded signatures."""
-    pdf_buffer = io.BytesIO()
+def create_approval_section():
+    styles = getSampleStyleSheet()
 
+    title_style = ParagraphStyle(
+        "ApprovalTitle", parent=styles["Heading2"], alignment=TA_CENTER,
+        fontSize=11, leading=14, spaceBefore=8, spaceAfter=6
+    )
+    role_style = ParagraphStyle(
+        "ApprovalRole", parent=styles["BodyText"], alignment=TA_LEFT,
+        fontSize=7, leading=9
+    )
+    field_style = ParagraphStyle(
+        "ApprovalField", parent=styles["BodyText"], alignment=TA_LEFT,
+        fontSize=7, leading=9
+    )
+
+    roles = [
+        "Prepared by",
+        "Checked by",
+        "Approved by Manager",
+        "Approved by Director"
+    ]
+
+    data = [[
+        Paragraph("<b>Approval role</b>", role_style),
+        Paragraph("<b>Name</b>", field_style),
+        Paragraph("<b>Signature</b>", field_style),
+        Paragraph("<b>Date</b>", field_style)
+    ]]
+
+    for role in roles:
+        data.append([
+            Paragraph(role, role_style),
+            Paragraph("<br/><br/>", field_style),
+            Paragraph("<br/><br/><br/>", field_style),
+            Paragraph("<br/><br/>", field_style)
+        ])
+
+    available_width = landscape(A4)[0] - 16 * mm
+    table = Table(
+        data,
+        colWidths=[
+            available_width * 0.24,
+            available_width * 0.25,
+            available_width * 0.31,
+            available_width * 0.20
+        ],
+        rowHeights=[10 * mm, 24 * mm, 24 * mm, 24 * mm, 24 * mm],
+        repeatRows=1
+    )
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F4E78")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#1F4E78")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#A6A6A6")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5)
+    ]))
+
+    return [Paragraph("DOCUMENT APPROVAL", title_style), table]
+
+
+def create_pdf(filtered_data):
+    pdf_buffer = io.BytesIO()
     document = SimpleDocTemplate(
         pdf_buffer,
         pagesize=landscape(A4),
@@ -200,66 +237,45 @@ def create_pdf(filtered_data):
 
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
-        "PDFTitle",
-        parent=styles["Title"],
-        alignment=TA_CENTER,
-        fontSize=14,
-        leading=18,
-        spaceAfter=8
+        "PDFTitle", parent=styles["Title"], alignment=TA_CENTER,
+        fontSize=14, leading=18, spaceAfter=8
     )
     cell_style = ParagraphStyle(
-        "PDFCell",
-        parent=styles["BodyText"],
-        fontSize=6,
-        leading=7,
-        wordWrap="CJK"
+        "PDFCell", parent=styles["BodyText"], fontSize=6,
+        leading=7, wordWrap="CJK"
     )
     header_style = ParagraphStyle(
-        "PDFHeader",
-        parent=styles["BodyText"],
-        fontSize=6,
-        leading=7,
-        textColor=colors.white,
-        alignment=TA_CENTER
+        "PDFHeader", parent=styles["BodyText"], fontSize=6,
+        leading=7, textColor=colors.white, alignment=TA_CENTER
     )
 
-    pdf_elements = [
+    elements = [
         Paragraph("Participants' Data", title_style),
         Paragraph(f"Number of records: {len(filtered_data)}", cell_style),
         Spacer(1, 5 * mm)
     ]
 
-    pdf_columns = [
+    columns = [
         column for column in filtered_data.columns
         if column != SIGNATURE_URL_COLUMN
-    ]
-    pdf_columns.append(SIGNATURE_URL_COLUMN)
+    ] + [SIGNATURE_URL_COLUMN]
 
     table_data = [[
         Paragraph(html.escape(str(column)), header_style)
-        for column in pdf_columns
+        for column in columns
     ]]
 
     for _, row in filtered_data.iterrows():
         row_values = []
-
-        for column in pdf_columns:
+        for column in columns:
             if column == SIGNATURE_URL_COLUMN:
-                signature_data_url = row.get(SIGNATURE_URL_COLUMN)
-
-                if (
-                    pd.notna(signature_data_url)
-                    and str(signature_data_url).startswith("data:image")
-                ):
+                image_data = row.get(SIGNATURE_URL_COLUMN)
+                if pd.notna(image_data) and str(image_data).startswith("data:image"):
                     try:
-                        encoded_part = str(signature_data_url).split(",", 1)[1]
-                        image_bytes = base64.b64decode(encoded_part)
-                        signature_image = Image(
-                            io.BytesIO(image_bytes),
-                            width=25 * mm,
-                            height=12 * mm
-                        )
-                        row_values.append(signature_image)
+                        image_bytes = base64.b64decode(str(image_data).split(",", 1)[1])
+                        row_values.append(Image(
+                            io.BytesIO(image_bytes), width=25 * mm, height=12 * mm
+                        ))
                     except Exception:
                         row_values.append(Paragraph("Unavailable", cell_style))
                 else:
@@ -268,36 +284,33 @@ def create_pdf(filtered_data):
                 value = row.get(column, "")
                 if pd.isna(value):
                     value = ""
-                row_values.append(
-                    Paragraph(html.escape(str(value)), cell_style)
-                )
-
+                row_values.append(Paragraph(html.escape(str(value)), cell_style))
         table_data.append(row_values)
 
     available_width = landscape(A4)[0] - 16 * mm
-    column_count = max(len(pdf_columns), 1)
-    column_widths = [available_width / column_count] * column_count
-
-    table = Table(table_data, colWidths=column_widths, repeatRows=1)
+    table = Table(
+        table_data,
+        colWidths=[available_width / max(len(columns), 1)] * len(columns),
+        repeatRows=1
+    )
     table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F4E78")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("ALIGN", (0, 0), (-1, 0), "CENTER"),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [
-            colors.white,
-            colors.HexColor("#F2F6FA")
-        ]),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F2F6FA")]),
         ("LEFTPADDING", (0, 0), (-1, -1), 3),
         ("RIGHTPADDING", (0, 0), (-1, -1), 3),
         ("TOPPADDING", (0, 0), (-1, -1), 3),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 3)
     ]))
 
-    pdf_elements.append(table)
+    elements.append(table)
+    elements.extend(create_approval_section())
+
     document.build(
-        pdf_elements,
+        elements,
         onFirstPage=add_header_footer,
         onLaterPages=add_header_footer
     )
@@ -314,105 +327,75 @@ except Exception as error:
     st.error(f"An error occurred while processing the data: {error}")
     st.stop()
 
-
-missing_columns = [
-    column for column in [NAME_COLUMN, DATE_COLUMN, SIGNATURE_URL_COLUMN]
-    if column not in df.columns
-]
-if missing_columns:
-    st.error(
-        "The following required columns were not found in the dataset: "
-        + ", ".join(missing_columns)
-    )
+required = [NAME_COLUMN, DATE_COLUMN, SIGNATURE_URL_COLUMN]
+missing = [column for column in required if column not in df.columns]
+if missing:
+    st.error("Missing required columns: " + ", ".join(missing))
     st.stop()
-
 
 with st.spinner("Loading signature images..."):
     df[SIGNATURE_URL_COLUMN] = df[SIGNATURE_URL_COLUMN].apply(
         download_signature_as_data_url
     )
 
-
-df["_month"] = pd.to_datetime(
-    df[DATE_COLUMN],
-    errors="coerce"
-).dt.strftime("%B %Y")
-
+df["_month"] = pd.to_datetime(df[DATE_COLUMN], errors="coerce").dt.strftime("%B %Y")
 month_options = ["All"] + sorted(
     df["_month"].dropna().unique().tolist(),
     key=lambda x: pd.to_datetime(x, format="%B %Y")
 )
-name_options = ["All"] + sorted(
-    df[NAME_COLUMN].dropna().astype(str).unique().tolist()
-)
-
+name_options = ["All"] + sorted(df[NAME_COLUMN].dropna().astype(str).unique().tolist())
 
 st.title("Participants' Data")
 st.write("Use the filters below to search records by name and activity month.")
 
-filter_column_1, filter_column_2, filter_column_3 = st.columns(3)
-with filter_column_1:
-    name_contains = st.text_input("Name contains:", value="")
-with filter_column_2:
-    name_pick = st.selectbox("Or pick name:", options=name_options)
-with filter_column_3:
-    month = st.selectbox("Month:", options=month_options)
+col1, col2, col3 = st.columns(3)
+with col1:
+    name_contains = st.text_input("Name contains:")
+with col2:
+    name_pick = st.selectbox("Or pick name:", name_options)
+with col3:
+    month = st.selectbox("Month:", month_options)
 
 filtered = df.copy()
 if name_contains:
-    filtered = filtered[
-        filtered[NAME_COLUMN].astype(str).str.contains(
-            name_contains,
-            case=False,
-            na=False
-        )
-    ]
+    filtered = filtered[filtered[NAME_COLUMN].astype(str).str.contains(name_contains, case=False, na=False)]
 elif name_pick != "All":
-    filtered = filtered[
-        filtered[NAME_COLUMN].astype(str).eq(name_pick)
-    ]
-
+    filtered = filtered[filtered[NAME_COLUMN].astype(str).eq(name_pick)]
 if month != "All":
     filtered = filtered[filtered["_month"] == month]
 
 display_df = filtered.drop(columns=["_month"], errors="ignore")
-
 st.write(f"### Showing {len(display_df)} matching records")
-
-column_config = {
-    SIGNATURE_URL_COLUMN: st.column_config.ImageColumn(
-        "Signature",
-        help="Submitted signature",
-        width="small"
-    )
-}
 
 st.dataframe(
     display_df.head(100),
     use_container_width=True,
     hide_index=True,
-    column_config=column_config
+    column_config={
+        SIGNATURE_URL_COLUMN: st.column_config.ImageColumn(
+            "Signature", help="Submitted signature", width="small"
+        )
+    }
 )
-
 
 excel_buffer = io.BytesIO()
 with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
     display_df.to_excel(writer, index=False, sheet_name="Filtered Data")
 
 st.download_button(
-    label="Download Excel",
+    "Download Excel",
     data=excel_buffer.getvalue(),
     file_name="Download.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
 
-
-with st.spinner("Preparing PDF with signatures..."):
+with st.spinner("Preparing PDF with signatures and approval fields..."):
     pdf_data = create_pdf(display_df)
 
 st.download_button(
-    label="Download PDF with Signatures",
+    "Download PDF with Signatures",
     data=pdf_data,
     file_name="Participants_Data_with_Signatures.pdf",
     mime="application/pdf"
 )
+
