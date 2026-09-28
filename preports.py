@@ -46,7 +46,7 @@ DOCUSIGN_FIELDS = [
 def download_signature_as_data_url(signature_url):
     if pd.isna(signature_url):
         return None
-    signature = str(signature_url).strip()
+    signature_url = str(signature_url).strip()
     if not signature_url:
         return None
     try:
