@@ -63,7 +63,7 @@ def download_signature_as_data_url(signature_url):
         return None
 
 
-@st.cache_data
+@st.cache_data(ttl=60)
 def load_data():
     response = requests.get(
         CSV_URL,
