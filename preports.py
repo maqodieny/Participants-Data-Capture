@@ -33,7 +33,7 @@ CSV_URL = (
 
 NAME_COLUMN = "Name"
 DATE_COLUMN = "Activity Date"
-SIGNATURE_URL_COLUMN = "Signature"
+SIGNATURE_URL_COLUMN = "Signature_URL"
 
 DOCUSIGN_FIELDS = [
     ("Company and project logo", ""),
